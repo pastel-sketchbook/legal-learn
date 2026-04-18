@@ -20,6 +20,11 @@ pub struct CorpusStats {
 
 /// Load (판결요지, 참조조문/사건명) pairs from precedents in data.db.
 pub fn load_pairs(db_path: &str) -> Result<Vec<TextPair>> {
+  load_pairs_limited(db_path, None)
+}
+
+/// Load precedent-derived training pairs with an optional cap for fast debugging.
+pub fn load_pairs_limited(db_path: &str, limit: Option<usize>) -> Result<Vec<TextPair>> {
   let conn = Connection::open(db_path)
     .with_context(|| format!("opening database: {db_path}"))?;
 
@@ -40,6 +45,9 @@ pub fn load_pairs(db_path: &str) -> Result<Vec<TextPair>> {
     let doc = row?;
     if let Some(pair) = extract_pair(&doc) {
       pairs.push(pair);
+      if limit.is_some_and(|limit| pairs.len() >= limit) {
+        break;
+      }
     }
   }
 

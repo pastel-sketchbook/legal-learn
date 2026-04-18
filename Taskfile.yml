@@ -80,6 +80,17 @@ tasks:
     cmds:
       - target/release/$PGM_NAME train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/smoke" --epochs 1 --batch-size 4 {{.CLI_ARGS}}
 
+  train:debug:
+    desc: Run a tiny debug training repro on a small pair subset
+    cmds:
+      - cargo run -- train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/smoke" --epochs 1 --batch-size 4 --limit 32 {{.CLI_ARGS}}
+
+  train:tiny:
+    desc: Run the smallest practical release training sanity check
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/smoke" --epochs 1 --batch-size 2 --limit 8 {{.CLI_ARGS}}
+
   export:
     desc: Export learned embeddings back into ../legal-ko/.qmd/data.db
     cmds:

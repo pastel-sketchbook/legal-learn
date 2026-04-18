@@ -50,6 +50,10 @@ enum Command {
     /// Learning rate
     #[arg(long, default_value_t = 1e-4)]
     lr: f64,
+
+    /// Limit the number of extracted training pairs for fast debugging
+    #[arg(long)]
+    limit: Option<usize>,
   },
 
   /// Export trained embeddings back into data.db
@@ -90,9 +94,10 @@ fn main() -> Result<()> {
       epochs,
       batch_size,
       lr,
+      limit,
     } => {
-      tracing::info!(db = %db, epochs, batch_size, lr, "starting training");
-      training::run(&db, &output, epochs, batch_size, lr)?;
+      tracing::info!(db = %db, epochs, batch_size, lr, limit, "starting training");
+      training::run(&db, &output, epochs, batch_size, lr, limit)?;
     }
     Command::Export { db, checkpoint } => {
       tracing::info!(db = %db, checkpoint = %checkpoint, "exporting embeddings");

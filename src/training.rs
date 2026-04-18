@@ -25,6 +25,7 @@ pub fn run(
   epochs: usize,
   batch_size: usize,
   lr: f64,
+  pair_limit: Option<usize>,
 ) -> Result<()> {
   let device = <InnerBackend as Backend>::Device::default();
 
@@ -34,7 +35,7 @@ pub fn run(
   let tokenizer = Arc::new(tokenize::get_tokenizer(db_path, &tokenizer_path)?);
 
   // 2. Load pairs and split train/valid (90/10)
-  let mut pairs = data::load_pairs(db_path)?;
+  let mut pairs = data::load_pairs_limited(db_path, pair_limit)?;
   let split = (pairs.len() as f64 * 0.9) as usize;
   let valid_pairs = pairs.split_off(split);
   let train_pairs = pairs;

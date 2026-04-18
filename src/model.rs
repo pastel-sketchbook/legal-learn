@@ -87,14 +87,14 @@ impl<B: Backend> EmbeddingModel<B> {
 
     let d_model = self.norm.gamma.dims()[0];
     let mask_f: Tensor<B, 3> = mask.float().unsqueeze_dim::<3>(2).expand([batch, seq_len, d_model]);
-    let summed: Tensor<B, 2> = (encoded * mask_f.clone()).sum_dim(1).squeeze::<2>();
-    let counts: Tensor<B, 2> = mask_f.sum_dim(1).squeeze::<2>().clamp_min(1e-9);
+    let summed: Tensor<B, 2> = (encoded * mask_f.clone()).sum_dim(1).squeeze_dim::<2>(1);
+    let counts: Tensor<B, 2> = mask_f.sum_dim(1).squeeze_dim::<2>(1).clamp_min(1e-9);
     let pooled = summed / counts;
 
     let normed = self.norm.forward(pooled);
     let projected = self.projection.forward(normed);
 
-    let norms: Tensor<B, 2> = projected.clone().powf_scalar(2.0).sum_dim(1).squeeze().sqrt().clamp_min(1e-9);
+    let norms: Tensor<B, 2> = projected.clone().powf_scalar(2.0).sum_dim(1).sqrt().clamp_min(1e-9);
     projected / norms
   }
 
