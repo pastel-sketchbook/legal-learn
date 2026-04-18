@@ -26,6 +26,7 @@ pub fn run(
   batch_size: usize,
   lr: f64,
   pair_limit: Option<usize>,
+  small: bool,
 ) -> Result<()> {
   let device = <InnerBackend as Backend>::Device::default();
 
@@ -64,14 +65,27 @@ pub fn run(
     .build(valid_dataset);
 
   // 5. Model
-  let config = EmbeddingModelConfig {
-    vocab_size: VOCAB_SIZE,
-    max_seq_len: MAX_SEQ_LEN,
-    d_model: 384,
-    n_layers: 6,
-    n_heads: 6,
-    d_ff: 1536,
-    dropout: 0.1,
+  let config = if small {
+    tracing::info!("using small model (2 layers, 128 dim)");
+    EmbeddingModelConfig {
+      vocab_size: VOCAB_SIZE,
+      max_seq_len: MAX_SEQ_LEN,
+      d_model: 128,
+      n_layers: 2,
+      n_heads: 4,
+      d_ff: 512,
+      dropout: 0.1,
+    }
+  } else {
+    EmbeddingModelConfig {
+      vocab_size: VOCAB_SIZE,
+      max_seq_len: MAX_SEQ_LEN,
+      d_model: 384,
+      n_layers: 6,
+      n_heads: 6,
+      d_ff: 1536,
+      dropout: 0.1,
+    }
   };
   let model = config.init::<TrainBackend>(&device);
 

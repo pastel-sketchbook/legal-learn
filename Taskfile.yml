@@ -91,6 +91,12 @@ tasks:
     cmds:
       - target/release/$PGM_NAME train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/smoke" --epochs 1 --batch-size 2 --limit 8 {{.CLI_ARGS}}
 
+  train:fast:
+    desc: Fast iteration with small model (release, 64 pairs, 5 epochs)
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/fast" --epochs 5 --batch-size 32 --limit 64 --small {{.CLI_ARGS}}
+
   export:
     desc: Export learned embeddings back into ../legal-ko/.qmd/data.db
     cmds:

@@ -54,6 +54,10 @@ enum Command {
     /// Limit the number of extracted training pairs for fast debugging
     #[arg(long)]
     limit: Option<usize>,
+
+    /// Use a small model (2 layers, 128 dim) for fast iteration
+    #[arg(long)]
+    small: bool,
   },
 
   /// Export trained embeddings back into data.db
@@ -95,9 +99,10 @@ fn main() -> Result<()> {
       batch_size,
       lr,
       limit,
+      small,
     } => {
-      tracing::info!(db = %db, epochs, batch_size, lr, limit, "starting training");
-      training::run(&db, &output, epochs, batch_size, lr, limit)?;
+      tracing::info!(db = %db, epochs, batch_size, lr, limit, small, "starting training");
+      training::run(&db, &output, epochs, batch_size, lr, limit, small)?;
     }
     Command::Export { db, checkpoint } => {
       tracing::info!(db = %db, checkpoint = %checkpoint, "exporting embeddings");
