@@ -1,0 +1,97 @@
+version: "3"
+
+env:
+  PGM_NAME: legal-learn
+  LEGAL_QMD_DB: ../legal-ko/.qmd/data.db
+  CHECKPOINT_DIR: checkpoints
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  fmt:
+    desc: Format code
+    cmds:
+      - cargo fmt --all
+
+  check:
+    desc: Type-check the project
+    cmds:
+      - cargo check
+
+  clippy:
+    desc: Run clippy lints
+    cmds:
+      - cargo clippy -- -D warnings
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - cargo test
+
+  check:all:
+    desc: Run format check, clippy, and tests
+    cmds:
+      - cargo fmt --all --check
+      - cargo clippy -- -D warnings
+      - cargo test
+
+  build:
+    desc: Build the release binary
+    cmds:
+      - cargo build --release
+
+  run:
+    desc: Run the CLI with custom arguments
+    cmds:
+      - cargo run -- {{.CLI_ARGS}}
+
+  inspect:
+    desc: Inspect ../legal-ko/.qmd/data.db and print corpus stats
+    cmds:
+      - cargo run -- inspect --db "{{.LEGAL_QMD_DB}}" {{.CLI_ARGS}}
+
+  inspect:json:
+    desc: Inspect ../legal-ko/.qmd/data.db and print JSON stats
+    cmds:
+      - cargo run -- inspect --db "{{.LEGAL_QMD_DB}}" --json {{.CLI_ARGS}}
+
+  train:
+    desc: Train the Burn model on ../legal-ko/.qmd/data.db
+    cmds:
+      - cargo run -- train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}" {{.CLI_ARGS}}
+
+  train:smoke:
+    desc: Run a tiny local smoke-training pass
+    cmds:
+      - cargo run -- train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/smoke" --epochs 1 --batch-size 4 {{.CLI_ARGS}}
+
+  train:release:
+    desc: Train using the release binary
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}" {{.CLI_ARGS}}
+
+  train:release:smoke:
+    desc: Run a tiny smoke-training pass with the release binary
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME train --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/smoke" --epochs 1 --batch-size 4 {{.CLI_ARGS}}
+
+  export:
+    desc: Export learned embeddings back into ../legal-ko/.qmd/data.db
+    cmds:
+      - cargo run -- export --db "{{.LEGAL_QMD_DB}}" --checkpoint "{{.CHECKPOINT_DIR}}" {{.CLI_ARGS}}
+
+  export:release:
+    desc: Export embeddings using the release binary
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME export --db "{{.LEGAL_QMD_DB}}" --checkpoint "{{.CHECKPOINT_DIR}}" {{.CLI_ARGS}}
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - cargo clean
