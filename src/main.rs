@@ -58,6 +58,10 @@ enum Command {
     /// Use a small model (2 layers, 128 dim) for fast iteration
     #[arg(long)]
     small: bool,
+
+    /// Number of linear warmup steps (0 = no warmup, cosine only)
+    #[arg(long, default_value_t = 0)]
+    warmup_steps: usize,
   },
 
   /// Export trained embeddings back into data.db
@@ -100,9 +104,19 @@ fn main() -> Result<()> {
       lr,
       limit,
       small,
+      warmup_steps,
     } => {
-      tracing::info!(db = %db, epochs, batch_size, lr, limit, small, "starting training");
-      training::run(&db, &output, epochs, batch_size, lr, limit, small)?;
+      tracing::info!(db = %db, epochs, batch_size, lr, limit, small, warmup_steps, "starting training");
+      training::run(&training::TrainConfig {
+        db_path: db,
+        output_dir: output,
+        epochs,
+        batch_size,
+        lr,
+        pair_limit: limit,
+        small,
+        warmup_steps,
+      })?;
     }
     Command::Export { db, checkpoint } => {
       tracing::info!(db = %db, checkpoint = %checkpoint, "exporting embeddings");

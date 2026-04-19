@@ -4,6 +4,9 @@ use anyhow::Result;
 use burn::backend::Autodiff;
 use burn::data::dataloader::DataLoaderBuilder;
 use burn::optim::AdamConfig;
+use burn::optim::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
+use burn::optim::lr_scheduler::linear::LinearLrSchedulerConfig;
+use burn::optim::lr_scheduler::composed::{ComposedLrSchedulerConfig, SchedulerReduction};
 use burn::prelude::*;
 use burn::record::{CompactRecorder, Recorder};
 use burn::train::metric::LossMetric;
@@ -18,28 +21,35 @@ use crate::tokenize::{self, MAX_SEQ_LEN, VOCAB_SIZE};
 type TrainBackend = Autodiff<burn::backend::NdArray>;
 type InnerBackend = burn::backend::NdArray;
 
+/// Training run configuration.
+pub struct TrainConfig {
+  pub db_path: String,
+  pub output_dir: String,
+  pub epochs: usize,
+  pub batch_size: usize,
+  pub lr: f64,
+  pub pair_limit: Option<usize>,
+  pub small: bool,
+  pub warmup_steps: usize,
+}
+
 /// Run the training loop.
-pub fn run(
-  db_path: &str,
-  output_dir: &str,
-  epochs: usize,
-  batch_size: usize,
-  lr: f64,
-  pair_limit: Option<usize>,
-  small: bool,
-) -> Result<()> {
+pub fn run(cfg: &TrainConfig) -> Result<()> {
+  let TrainConfig { db_path, output_dir, epochs, batch_size, lr, pair_limit, small, warmup_steps } = cfg;
+  let (epochs, batch_size, lr, warmup_steps) = (*epochs, *batch_size, *lr, *warmup_steps);
   let device = <InnerBackend as Backend>::Device::default();
 
   // 1. Tokenizer
   let tokenizer_path = format!("{output_dir}/tokenizer.json");
-  std::fs::create_dir_all(output_dir)?;
+  std::fs::create_dir_all(output_dir.as_str())?;
   let tokenizer = Arc::new(tokenize::get_tokenizer(db_path, &tokenizer_path)?);
 
   // 2. Load pairs and split train/valid (90/10)
-  let mut pairs = data::load_pairs_limited(db_path, pair_limit)?;
+  let mut pairs = data::load_pairs_limited(db_path, *pair_limit)?;
   let split = (pairs.len() as f64 * 0.9) as usize;
   let valid_pairs = pairs.split_off(split);
   let train_pairs = pairs;
+  let train_pairs_len = train_pairs.len();
 
   tracing::info!(
     train = train_pairs.len(),
@@ -65,7 +75,7 @@ pub fn run(
     .build(valid_dataset);
 
   // 5. Model
-  let config = if small {
+  let config = if *small {
     tracing::info!("using small model (2 layers, 128 dim)");
     EmbeddingModelConfig {
       vocab_size: VOCAB_SIZE,
@@ -89,11 +99,31 @@ pub fn run(
   };
   let model = config.init::<TrainBackend>(&device);
 
-  // 6. Optimizer + scheduler
+  // 6. Optimizer + LR scheduler
   let optim = AdamConfig::new().init();
 
+  let iters_per_epoch = train_pairs_len.div_ceil(batch_size);
+  let total_iters = epochs * iters_per_epoch;
+
+  let scheduler = if warmup_steps > 0 {
+    tracing::info!(warmup_steps, total_iters, "using linear warmup + cosine annealing");
+    let cosine_iters = total_iters.saturating_sub(warmup_steps).max(1);
+    ComposedLrSchedulerConfig::new()
+      .with_reduction(SchedulerReduction::Prod)
+      .linear(LinearLrSchedulerConfig::new(1e-7, 1.0, warmup_steps))
+      .cosine(CosineAnnealingLrSchedulerConfig::new(lr, cosine_iters))
+      .init()
+      .map_err(|e| anyhow::anyhow!("scheduler config: {e}"))?
+  } else {
+    tracing::info!(total_iters, "using cosine annealing (no warmup)");
+    ComposedLrSchedulerConfig::new()
+      .cosine(CosineAnnealingLrSchedulerConfig::new(lr, total_iters.max(1)))
+      .init()
+      .map_err(|e| anyhow::anyhow!("scheduler config: {e}"))?
+  };
+
   // 7. Learner
-  let learner = Learner::new(model, optim, lr);
+  let learner = Learner::new(model, optim, scheduler);
 
   // 8. Supervised training
   let result = SupervisedTraining::new(output_dir, dataloader_train, dataloader_valid)
