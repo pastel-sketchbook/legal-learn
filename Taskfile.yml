@@ -170,6 +170,12 @@ tasks:
     cmds:
       - cargo run --bin legal-ko-cli -- zmd search "손해배상 청구" {{.CLI_ARGS}}
 
+  check:search:jeonse:
+    desc: Verify embeddings with jeonse tenant/fraud search
+    dir: ../legal-ko
+    cmds:
+      - cargo run --bin legal-ko-cli -- zmd search "전세" {{.CLI_ARGS}}
+
   clean:
     desc: Remove build artifacts
     cmds:
