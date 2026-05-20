@@ -60,8 +60,10 @@ Or use Task:
 ```bash
 task train              # Full contrastive training
 task train:fast         # Small model, 64 pairs, 5 epochs
-task distill:generate   # Teacher embedding generation
-task distill:train      # Distillation training
+task distill:generate   # Teacher embedding generation (full corpus)
+task distill:generate:fast  # Teacher generation, --limit 500
+task distill:train      # Distillation training (full model, 10 epochs)
+task distill:train:fast # Distillation, small model, 5 epochs
 task distill            # Full pipeline (generate + train)
 task export             # Write embeddings to database
 task inspect            # Corpus statistics
