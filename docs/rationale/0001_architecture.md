@@ -1,9 +1,9 @@
-# 0001 — Architecture Rationale
+## 0001 — Architecture Rationale
 
 **Status:** Implemented  
 **Date:** 2026-05-20
 
-## Context
+### Context
 
 We need to produce high-quality Korean legal embeddings from a 306K-document
 corpus (laws + precedents) for downstream similarity search. The system must:
@@ -13,9 +13,9 @@ corpus (laws + precedents) for downstream similarity search. The system must:
 - Enable iterative improvement without cloud dependencies
 - Support flexible embedding dimensions for storage/quality tradeoffs
 
-## Decisions
+### Decisions
 
-### 1. Rust + Burn framework (not Python/PyTorch)
+#### 1. Rust + Burn framework (not Python/PyTorch)
 
 **Why:** The sibling repo ecosystem is Rust-native. Burn provides:
 - Native Metal/wgpu backend for M1 acceleration without CUDA
@@ -27,7 +27,7 @@ corpus (laws + precedents) for downstream similarity search. The system must:
 Mitigated by the distillation path (use llama.cpp for inference from pretrained
 models, train only the student in Burn).
 
-### 2. Contrastive learning with InfoNCE (not generative/MLM)
+#### 2. Contrastive learning with InfoNCE (not generative/MLM)
 
 **Why:** The task is embedding, not generation. InfoNCE directly optimizes the
 metric we care about (cosine similarity between semantically related texts).
@@ -41,7 +41,7 @@ implicit negatives without additional sampling.
 These are naturally co-occurring pairs where semantic relatedness is structural
 rather than requiring human annotation.
 
-### 3. Matryoshka representation learning (not fixed-dim only)
+#### 3. Matryoshka representation learning (not fixed-dim only)
 
 **Why:** Computing InfoNCE at truncated prefix dimensions (384/256/128/64)
 trains the model so that any prefix of the embedding vector is independently
@@ -55,7 +55,7 @@ useful. Benefits:
 **Implementation:** Average InfoNCE loss across 4 dimension levels. Each level
 re-normalizes after truncation to maintain unit-norm invariant.
 
-### 4. Wgpu backend (not ndarray or CUDA)
+#### 4. Wgpu backend (not ndarray or CUDA)
 
 **Why:** Apple M1 Pro has 16 Metal GPU cores. Wgpu maps to Metal natively,
 providing 3-5x speedup over CPU ndarray for matrix operations. No NVIDIA
@@ -65,7 +65,7 @@ hardware available, so CUDA is not an option.
 bounds require `recursion_limit = 256`. LossMetric adaptor doesn't work
 with wgpu, so we drop per-epoch metric logging from SupervisedTraining.
 
-### 5. Distillation via llama.cpp (not fine-tuning a pretrained model in Burn)
+#### 5. Distillation via llama.cpp (not fine-tuning a pretrained model in Burn)
 
 **Why:** Burn lacks pretrained model loaders for Qwen/Gemma/etc. Rather than
 implement weight loading from safetensors (complex, one-off work), we:
@@ -91,7 +91,7 @@ truncated from 768→384 for the student target.
 - Each invocation reloads the model (~1.5s fixed cost), making small batches
   acceptable for the total volume (~930 unique texts for 500 pairs)
 
-### 6. vec0 index population during export (not separate indexing step)
+#### 6. vec0 index population during export (not separate indexing step)
 
 **Why:** The `content_vectors_idx` virtual table is what downstream search
 queries. If we only write JSON to `content_vectors`, the vec0 index stays
@@ -101,7 +101,7 @@ empty and search doesn't work. By writing both in the same export pass:
 - Atomic clear+rewrite prevents stale mixed-model results
 - Raw f32 bytes for vec0 (no JSON parse overhead at query time)
 
-### 7. BPE tokenizer trained from corpus (not reusing a pretrained tokenizer)
+#### 7. BPE tokenizer trained from corpus (not reusing a pretrained tokenizer)
 
 **Why:** Korean legal text has domain-specific vocabulary (법률, 판결요지,
 조문, etc.) that general-purpose tokenizers split suboptimally. Training
@@ -112,12 +112,18 @@ the 128-token sequence length budget.
 because we train from scratch (contrastive) or distill (MSE on embeddings,
 not tokens).
 
-## Architecture Diagram
+**Corpus sampling:** BPE merge computation is O(n^2) on corpus size. Training
+on the full 306K documents takes hours (observed: 2 merges in 3 minutes for
+32K vocab). The tokenizer trainer samples 10K evenly-spaced documents from
+the corpus, which provides sufficient vocabulary coverage while completing
+in ~1-2 minutes.
+
+### Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     legal-ko/.qmd/data.db                    │
-│  documents (306K) │ content │ content_vectors │ vec0 index   │
+│                     legal-ko/.qmd/data.db                   │
+│  documents (306K) │ content │ content_vectors │ vec0 index  │
 └────────┬──────────────────────────────────────────┬─────────┘
          │ read                                     │ write
          ▼                                          ▲
@@ -128,19 +134,19 @@ not tokens).
 └────────┬────────┘                      └────────┬─────────┘
          │                                        │
          ▼                                        │
-┌─────────────────┐    ┌──────────────┐          │
-│  tokenize.rs    │    │   model.rs   │──────────┘
+┌─────────────────┐    ┌───────────────┐           │
+│  tokenize.rs    │    │   model.rs    │───────────┘
 │ BPE 32K vocab   │───▶│ 6L transformer│
 │ MAX_SEQ_LEN=128 │    │ 384-dim embed │
-└─────────────────┘    └──────┬───────┘
+└─────────────────┘    └──────┬────────┘
                               │
                     ┌─────────┴─────────┐
                     │                   │
-              ┌─────▼─────┐    ┌───────▼───────┐
-              │  loss.rs   │    │  distill.rs   │
-              │ Matryoshka │    │ llama-embedding│
-              │ InfoNCE    │    │ MSE student   │
-              └────────────┘    └───────────────┘
+              ┌─────▼──────┐    ┌───────▼─────────┐
+              │  loss.rs   │    │  distill.rs     │
+              │ Matryoshka │    │ llama-embedding │
+              │ InfoNCE    │    │ MSE student     │
+              └────────────┘    └─────────────────┘
 ```
 
 ## Future Work

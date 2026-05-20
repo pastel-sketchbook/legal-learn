@@ -4,3 +4,5 @@
 .DS_Store
 /artifacts/
 /checkpoints/
+/loss_comparison.png
+/scripts/plot_loss.py
