@@ -193,3 +193,63 @@ tasks:
     desc: Remove build artifacts
     cmds:
       - cargo clean
+
+  version:patch:
+    desc: Bump patch version (0.0.x)
+    vars:
+      CURRENT:
+        sh: cat VERSION
+      MAJOR:
+        sh: cat VERSION | cut -d. -f1
+      MINOR:
+        sh: cat VERSION | cut -d. -f2
+      PATCH:
+        sh: cat VERSION | cut -d. -f3
+    cmds:
+      - |
+        NEW="{{.MAJOR}}.{{.MINOR}}.$(({{.PATCH}} + 1))"
+        echo "$NEW" > VERSION
+        sed -i '' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
+        cargo generate-lockfile
+        echo "Bumped {{.CURRENT}} → $NEW"
+
+  version:minor:
+    desc: Bump minor version (0.x.0)
+    vars:
+      CURRENT:
+        sh: cat VERSION
+      MAJOR:
+        sh: cat VERSION | cut -d. -f1
+      MINOR:
+        sh: cat VERSION | cut -d. -f2
+    cmds:
+      - |
+        NEW="{{.MAJOR}}.$(({{.MINOR}} + 1)).0"
+        echo "$NEW" > VERSION
+        sed -i '' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
+        cargo generate-lockfile
+        echo "Bumped {{.CURRENT}} → $NEW"
+
+  version:major:
+    desc: Bump major version (x.0.0)
+    vars:
+      CURRENT:
+        sh: cat VERSION
+      MAJOR:
+        sh: cat VERSION | cut -d. -f1
+    cmds:
+      - |
+        NEW="$(({{.MAJOR}} + 1)).0.0"
+        echo "$NEW" > VERSION
+        sed -i '' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
+        cargo generate-lockfile
+        echo "Bumped {{.CURRENT}} → $NEW"
+
+  version:tag:
+    desc: Create git tag from current version
+    vars:
+      VERSION:
+        sh: cat VERSION
+    cmds:
+      - git tag -a "v{{.VERSION}}" -m "v{{.VERSION}}"
+      - echo "Tagged v{{.VERSION}}"
