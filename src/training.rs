@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use burn::backend::Autodiff;
 use burn::data::dataloader::DataLoaderBuilder;
 use burn::optim::AdamConfig;
+use burn::optim::lr_scheduler::composed::{ComposedLrSchedulerConfig, SchedulerReduction};
 use burn::optim::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::optim::lr_scheduler::linear::LinearLrSchedulerConfig;
-use burn::optim::lr_scheduler::composed::{ComposedLrSchedulerConfig, SchedulerReduction};
 use burn::prelude::*;
 use burn::record::{CompactRecorder, Recorder};
 use burn::train::metric::LossMetric;
@@ -23,216 +23,231 @@ type InnerBackend = burn::backend::NdArray;
 
 /// Training run configuration.
 pub struct TrainConfig {
-  pub db_path: String,
-  pub output_dir: String,
-  pub epochs: usize,
-  pub batch_size: usize,
-  pub lr: f64,
-  pub pair_limit: Option<usize>,
-  pub small: bool,
-  pub warmup_steps: usize,
+    pub db_path: String,
+    pub output_dir: String,
+    pub epochs: usize,
+    pub batch_size: usize,
+    pub lr: f64,
+    pub pair_limit: Option<usize>,
+    pub small: bool,
+    pub warmup_steps: usize,
 }
 
 /// Run the training loop.
 pub fn run(cfg: &TrainConfig) -> Result<()> {
-  let TrainConfig { db_path, output_dir, epochs, batch_size, lr, pair_limit, small, warmup_steps } = cfg;
-  let (epochs, batch_size, lr, warmup_steps) = (*epochs, *batch_size, *lr, *warmup_steps);
-  let device = <InnerBackend as Backend>::Device::default();
+    let TrainConfig {
+        db_path,
+        output_dir,
+        epochs,
+        batch_size,
+        lr,
+        pair_limit,
+        small,
+        warmup_steps,
+    } = cfg;
+    let (epochs, batch_size, lr, warmup_steps) = (*epochs, *batch_size, *lr, *warmup_steps);
+    let device = <InnerBackend as Backend>::Device::default();
 
-  // 1. Tokenizer
-  let tokenizer_path = format!("{output_dir}/tokenizer.json");
-  std::fs::create_dir_all(output_dir.as_str())?;
-  let tokenizer = Arc::new(tokenize::get_tokenizer(db_path, &tokenizer_path)?);
+    // 1. Tokenizer
+    let tokenizer_path = format!("{output_dir}/tokenizer.json");
+    std::fs::create_dir_all(output_dir.as_str())?;
+    let tokenizer = Arc::new(tokenize::get_tokenizer(db_path, &tokenizer_path)?);
 
-  // 2. Load pairs and split train/valid (90/10)
-  let mut pairs = data::load_pairs_limited(db_path, *pair_limit)?;
-  let split = (pairs.len() as f64 * 0.9) as usize;
-  let valid_pairs = pairs.split_off(split);
-  let train_pairs = pairs;
-  let train_pairs_len = train_pairs.len();
+    // 2. Load pairs and split train/valid (90/10)
+    let mut pairs = data::load_pairs_limited(db_path, *pair_limit)?;
+    let split = (pairs.len() as f64 * 0.9) as usize;
+    let valid_pairs = pairs.split_off(split);
+    let train_pairs = pairs;
+    let train_pairs_len = train_pairs.len();
 
-  tracing::info!(
-    train = train_pairs.len(),
-    valid = valid_pairs.len(),
-    "dataset split"
-  );
+    tracing::info!(
+        train = train_pairs.len(),
+        valid = valid_pairs.len(),
+        "dataset split"
+    );
 
-  // 3. Datasets
-  let train_dataset = PairDataset::new(train_pairs, tokenizer.clone());
-  let valid_dataset = PairDataset::new(valid_pairs, tokenizer);
+    // 3. Datasets
+    let train_dataset = PairDataset::new(train_pairs, tokenizer.clone());
+    let valid_dataset = PairDataset::new(valid_pairs, tokenizer);
 
-  // 4. Dataloaders
-  let batcher = PairBatcher::new();
+    // 4. Dataloaders
+    let batcher = PairBatcher::new();
 
-  let dataloader_train = DataLoaderBuilder::<TrainBackend, _, _>::new(batcher.clone())
-    .batch_size(batch_size)
-    .shuffle(42)
-    .num_workers(4)
-    .build(train_dataset);
+    let dataloader_train = DataLoaderBuilder::<TrainBackend, _, _>::new(batcher.clone())
+        .batch_size(batch_size)
+        .shuffle(42)
+        .num_workers(4)
+        .build(train_dataset);
 
-  let dataloader_valid = DataLoaderBuilder::<InnerBackend, _, _>::new(batcher)
-    .batch_size(batch_size)
-    .build(valid_dataset);
+    let dataloader_valid = DataLoaderBuilder::<InnerBackend, _, _>::new(batcher)
+        .batch_size(batch_size)
+        .build(valid_dataset);
 
-  // 5. Model
-  let config = if *small {
-    tracing::info!("using small model (2 layers, 128 dim)");
-    EmbeddingModelConfig {
-      vocab_size: VOCAB_SIZE,
-      max_seq_len: MAX_SEQ_LEN,
-      d_model: 128,
-      n_layers: 2,
-      n_heads: 4,
-      d_ff: 512,
-      dropout: 0.1,
-    }
-  } else {
-    EmbeddingModelConfig {
-      vocab_size: VOCAB_SIZE,
-      max_seq_len: MAX_SEQ_LEN,
-      d_model: 384,
-      n_layers: 6,
-      n_heads: 6,
-      d_ff: 1536,
-      dropout: 0.1,
-    }
-  };
-  let model = config.init::<TrainBackend>(&device);
+    // 5. Model
+    let config = if *small {
+        tracing::info!("using small model (2 layers, 128 dim)");
+        EmbeddingModelConfig {
+            vocab_size: VOCAB_SIZE,
+            max_seq_len: MAX_SEQ_LEN,
+            d_model: 128,
+            n_layers: 2,
+            n_heads: 4,
+            d_ff: 512,
+            dropout: 0.1,
+        }
+    } else {
+        EmbeddingModelConfig {
+            vocab_size: VOCAB_SIZE,
+            max_seq_len: MAX_SEQ_LEN,
+            d_model: 384,
+            n_layers: 6,
+            n_heads: 6,
+            d_ff: 1536,
+            dropout: 0.1,
+        }
+    };
+    let model = config.init::<TrainBackend>(&device);
 
-  // 6. Optimizer + LR scheduler
-  let optim = AdamConfig::new().init();
+    // 6. Optimizer + LR scheduler
+    let optim = AdamConfig::new().init();
 
-  let iters_per_epoch = train_pairs_len.div_ceil(batch_size);
-  let total_iters = epochs * iters_per_epoch;
+    let iters_per_epoch = train_pairs_len.div_ceil(batch_size);
+    let total_iters = epochs * iters_per_epoch;
 
-  let scheduler = if warmup_steps > 0 {
-    tracing::info!(warmup_steps, total_iters, "using linear warmup + cosine annealing");
-    let cosine_iters = total_iters.saturating_sub(warmup_steps).max(1);
-    ComposedLrSchedulerConfig::new()
-      .with_reduction(SchedulerReduction::Prod)
-      .linear(LinearLrSchedulerConfig::new(1e-7, 1.0, warmup_steps))
-      .cosine(CosineAnnealingLrSchedulerConfig::new(lr, cosine_iters))
-      .init()
-      .map_err(|e| anyhow::anyhow!("scheduler config: {e}"))?
-  } else {
-    tracing::info!(total_iters, "using cosine annealing (no warmup)");
-    ComposedLrSchedulerConfig::new()
-      .cosine(CosineAnnealingLrSchedulerConfig::new(lr, total_iters.max(1)))
-      .init()
-      .map_err(|e| anyhow::anyhow!("scheduler config: {e}"))?
-  };
+    let scheduler = if warmup_steps > 0 {
+        tracing::info!(
+            warmup_steps,
+            total_iters,
+            "using linear warmup + cosine annealing"
+        );
+        let cosine_iters = total_iters.saturating_sub(warmup_steps).max(1);
+        ComposedLrSchedulerConfig::new()
+            .with_reduction(SchedulerReduction::Prod)
+            .linear(LinearLrSchedulerConfig::new(1e-7, 1.0, warmup_steps))
+            .cosine(CosineAnnealingLrSchedulerConfig::new(lr, cosine_iters))
+            .init()
+            .map_err(|e| anyhow::anyhow!("scheduler config: {e}"))?
+    } else {
+        tracing::info!(total_iters, "using cosine annealing (no warmup)");
+        ComposedLrSchedulerConfig::new()
+            .cosine(CosineAnnealingLrSchedulerConfig::new(
+                lr,
+                total_iters.max(1),
+            ))
+            .init()
+            .map_err(|e| anyhow::anyhow!("scheduler config: {e}"))?
+    };
 
-  // 7. Learner
-  let learner = Learner::new(model, optim, scheduler);
+    // 7. Learner
+    let learner = Learner::new(model, optim, scheduler);
 
-  // 8. Supervised training
-  let result = SupervisedTraining::new(output_dir, dataloader_train, dataloader_valid)
-    .metric_train_numeric(LossMetric::<InnerBackend>::new())
-    .metric_valid_numeric(LossMetric::<InnerBackend>::new())
-    .with_file_checkpointer(CompactRecorder::new())
-    .num_epochs(epochs)
-    .summary()
-    .launch(learner);
+    // 8. Supervised training
+    let result = SupervisedTraining::new(output_dir, dataloader_train, dataloader_valid)
+        .metric_train_numeric(LossMetric::<InnerBackend>::new())
+        .metric_valid_numeric(LossMetric::<InnerBackend>::new())
+        .with_file_checkpointer(CompactRecorder::new())
+        .num_epochs(epochs)
+        .summary()
+        .launch(learner);
 
-  // 9. Save final model
-  let trained_model = result.model;
-  let final_path = format!("{output_dir}/model_final");
-  trained_model
-    .save_file(&final_path, &CompactRecorder::new())
-    .map_err(|e| anyhow::anyhow!("saving model: {e}"))?;
+    // 9. Save final model
+    let trained_model = result.model;
+    let final_path = format!("{output_dir}/model_final");
+    trained_model
+        .save_file(&final_path, &CompactRecorder::new())
+        .map_err(|e| anyhow::anyhow!("saving model: {e}"))?;
 
-  tracing::info!(path = %final_path, "training complete, model saved");
-  Ok(())
+    tracing::info!(path = %final_path, "training complete, model saved");
+    Ok(())
 }
 
 /// Export embeddings from a trained checkpoint back into data.db.
 pub fn export(db_path: &str, checkpoint_dir: &str) -> Result<()> {
-  let device = <InnerBackend as Backend>::Device::default();
+    let device = <InnerBackend as Backend>::Device::default();
 
-  // Load tokenizer
-  let tokenizer_path = format!("{checkpoint_dir}/tokenizer.json");
-  let tokenizer = tokenize::load_tokenizer(&tokenizer_path)?;
+    // Load tokenizer
+    let tokenizer_path = format!("{checkpoint_dir}/tokenizer.json");
+    let tokenizer = tokenize::load_tokenizer(&tokenizer_path)?;
 
-  // Load model
-  let config = EmbeddingModelConfig {
-    vocab_size: VOCAB_SIZE,
-    max_seq_len: MAX_SEQ_LEN,
-    d_model: 384,
-    n_layers: 6,
-    n_heads: 6,
-    d_ff: 1536,
-    dropout: 0.1,
-  };
-  let model: crate::model::EmbeddingModel<InnerBackend> = config.init(&device);
+    // Load model
+    let config = EmbeddingModelConfig {
+        vocab_size: VOCAB_SIZE,
+        max_seq_len: MAX_SEQ_LEN,
+        d_model: 384,
+        n_layers: 6,
+        n_heads: 6,
+        d_ff: 1536,
+        dropout: 0.1,
+    };
+    let model: crate::model::EmbeddingModel<InnerBackend> = config.init(&device);
 
-  let model_path = format!("{checkpoint_dir}/model_final");
-  let record = CompactRecorder::new()
-    .load(model_path.into(), &device)
-    .map_err(|e| anyhow::anyhow!("loading model: {e}"))?;
-  let model = model.load_record(record);
+    let model_path = format!("{checkpoint_dir}/model_final");
+    let record = CompactRecorder::new()
+        .load(model_path.into(), &device)
+        .map_err(|e| anyhow::anyhow!("loading model: {e}"))?;
+    let model = model.load_record(record);
 
-  // Open database
-  let conn = rusqlite::Connection::open(db_path)?;
+    // Open database
+    let conn = rusqlite::Connection::open(db_path)
+        .with_context(|| format!("opening database for export: {db_path}"))?;
 
-  // Iterate all documents and compute embeddings
-  let mut stmt = conn.prepare(
-    "SELECT d.hash, c.doc FROM content c
+    // Iterate all documents and compute embeddings
+    let mut stmt = conn.prepare(
+        "SELECT d.hash, c.doc FROM content c
      JOIN documents d ON d.hash = c.hash
      WHERE d.active = 1",
-  )?;
+    )?;
 
-  let rows: Vec<(String, String)> = stmt
-    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-    .filter_map(|r| r.ok())
-    .collect();
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
 
-  tracing::info!(documents = rows.len(), "computing embeddings");
+    tracing::info!(documents = rows.len(), "computing embeddings");
 
-  let model_name = "legal-learn-v1";
-  let now = chrono::Utc::now().to_rfc3339();
+    let model_name = "legal-learn-v1";
+    let now = chrono::Utc::now().to_rfc3339();
 
-  // Clear old embeddings from this model
-  conn.execute(
-    "DELETE FROM content_vectors WHERE model = ?1",
-    [model_name],
-  )?;
+    // Clear old embeddings from this model
+    conn.execute("DELETE FROM content_vectors WHERE model = ?1", [model_name])?;
 
-  let mut insert_stmt = conn.prepare(
-    "INSERT INTO content_vectors (hash, seq, pos, model, embedding, embedded_at)
+    let mut insert_stmt = conn.prepare(
+        "INSERT INTO content_vectors (hash, seq, pos, model, embedding, embedded_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-  )?;
+    )?;
 
-  for (i, (hash, doc)) in rows.iter().enumerate() {
-    let (ids, mask) = tokenize::encode(&tokenizer, doc);
+    for (i, (hash, doc)) in rows.iter().enumerate() {
+        let (ids, mask) = tokenize::encode(&tokenizer, doc);
 
-    let ids_tensor = Tensor::<InnerBackend, 1, Int>::from_data(
-      TensorData::new(ids.iter().map(|&v| v as i64).collect::<Vec<_>>(), [MAX_SEQ_LEN]),
-      &device,
-    )
-    .unsqueeze::<2>();
+        let ids_tensor = Tensor::<InnerBackend, 1, Int>::from_data(
+            TensorData::new(
+                ids.iter().map(|&v| v as i64).collect::<Vec<_>>(),
+                [MAX_SEQ_LEN],
+            ),
+            &device,
+        )
+        .unsqueeze::<2>();
 
-    let mask_tensor = Tensor::<InnerBackend, 1, Bool>::from_data(
-      TensorData::from(mask.as_slice()),
-      &device,
-    )
-    .unsqueeze::<2>();
+        let mask_tensor =
+            Tensor::<InnerBackend, 1, Bool>::from_data(TensorData::from(mask.as_slice()), &device)
+                .unsqueeze::<2>();
 
-    let embedding = model.forward(ids_tensor, mask_tensor);
-    let emb_data: Vec<f32> = embedding
-      .squeeze::<1>()
-      .into_data()
-      .to_vec()
-      .unwrap();
+        let embedding = model.forward(ids_tensor, mask_tensor);
+        let emb_data: Vec<f32> = embedding
+            .squeeze::<1>()
+            .into_data()
+            .to_vec()
+            .context("extracting embedding tensor data")?;
 
-    let emb_json = serde_json::to_string(&emb_data)?;
+        let emb_json = serde_json::to_string(&emb_data)?;
 
-    insert_stmt.execute(rusqlite::params![hash, 0, 0, model_name, emb_json, now])?;
+        insert_stmt.execute(rusqlite::params![hash, 0, 0, model_name, emb_json, now])?;
 
-    if (i + 1) % 1000 == 0 {
-      tracing::info!(progress = i + 1, total = rows.len(), "embedding documents");
+        if (i + 1) % 1000 == 0 {
+            tracing::info!(progress = i + 1, total = rows.len(), "embedding documents");
+        }
     }
-  }
 
-  tracing::info!("export complete: {} embeddings written", rows.len());
-  Ok(())
+    tracing::info!("export complete: {} embeddings written", rows.len());
+    Ok(())
 }
