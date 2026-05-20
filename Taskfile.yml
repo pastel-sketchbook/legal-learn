@@ -114,11 +114,23 @@ tasks:
     cmds:
       - target/release/$PGM_NAME distill-generate --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/teacher_embeddings.jsonl" {{.CLI_ARGS}}
 
+  distill:generate:fast:
+    desc: Generate teacher embeddings for 500 pairs only
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME distill-generate --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/teacher_embeddings.jsonl" --limit 500 {{.CLI_ARGS}}
+
   distill:train:
     desc: Train student model via distillation from teacher embeddings
     deps: [build]
     cmds:
       - target/release/$PGM_NAME distill-train --db "{{.LEGAL_QMD_DB}}" --teacher "{{.CHECKPOINT_DIR}}/teacher_embeddings.jsonl" --output "{{.CHECKPOINT_DIR}}/distilled" {{.CLI_ARGS}}
+
+  distill:train:fast:
+    desc: Distill with small model, 5 epochs
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME distill-train --db "{{.LEGAL_QMD_DB}}" --teacher "{{.CHECKPOINT_DIR}}/teacher_embeddings.jsonl" --output "{{.CHECKPOINT_DIR}}/distilled" --small --epochs 5 {{.CLI_ARGS}}
 
   distill:
     desc: Full distillation pipeline (generate teachers then train)
