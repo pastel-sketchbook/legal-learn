@@ -108,7 +108,7 @@ impl<B: Backend> EmbeddingModel<B> {
     pub fn forward_pair(&self, batch: TrainingBatch<B>) -> Tensor<B, 1> {
         let anchor_emb = self.forward(batch.anchor_ids, batch.anchor_mask);
         let positive_emb = self.forward(batch.positive_ids, batch.positive_mask);
-        loss::matryoshka_loss(anchor_emb, positive_emb, TAU)
+        loss::matryoshka_loss(&anchor_emb, &positive_emb, TAU)
     }
 }
 

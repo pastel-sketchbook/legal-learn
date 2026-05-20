@@ -209,6 +209,8 @@ pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
     let model = model.load_record(record);
 
     // Load sqlite-vec extension for vec0 virtual table support
+    // SAFETY: sqlite3_vec_init has the correct signature for sqlite3_auto_extension.
+    // The transmute converts the function pointer to the expected Option<extern "C" fn()> type.
     unsafe {
         #[allow(clippy::missing_transmute_annotations)]
         rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
@@ -229,7 +231,7 @@ pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
 
     let rows: Vec<(String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .filter_map(|r| r.ok())
+        .filter_map(Result::ok)
         .collect();
 
     tracing::info!(documents = rows.len(), "computing embeddings");
@@ -298,7 +300,11 @@ pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
         }
 
         if chunk_end % 10000 < batch_size {
-            tracing::info!(progress = chunk_end, total = rows.len(), "embedding documents");
+            tracing::info!(
+                progress = chunk_end,
+                total = rows.len(),
+                "embedding documents"
+            );
         }
     }
 

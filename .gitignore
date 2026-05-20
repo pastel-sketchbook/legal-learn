@@ -2,6 +2,7 @@
 *.swp
 *.swo
 .DS_Store
+.env*
 /artifacts/
 /checkpoints/
 /loss_comparison.png

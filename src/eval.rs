@@ -64,13 +64,29 @@ pub fn evaluate(db_path: &str, checkpoint_dir: &str, small: bool, n: usize) -> R
         &pairs[..]
     };
     let eval_n = eval_pairs.len();
-    tracing::info!(eval_n, total_pairs = pairs.len(), "evaluating on held-out pairs");
+    tracing::info!(
+        eval_n,
+        total_pairs = pairs.len(),
+        "evaluating on held-out pairs"
+    );
 
     let d_model = if small { 128 } else { 384 };
 
     // Encode all anchors and positives in batches
-    let anchor_embs = encode_batch(&model, &tokenizer, eval_pairs.iter().map(|p| &p.anchor), &device, d_model)?;
-    let positive_embs = encode_batch(&model, &tokenizer, eval_pairs.iter().map(|p| &p.positive), &device, d_model)?;
+    let anchor_embs = encode_batch(
+        &model,
+        &tokenizer,
+        eval_pairs.iter().map(|p| &p.anchor),
+        &device,
+        d_model,
+    )?;
+    let positive_embs = encode_batch(
+        &model,
+        &tokenizer,
+        eval_pairs.iter().map(|p| &p.positive),
+        &device,
+        d_model,
+    )?;
 
     // Compute cosine similarity matrix [eval_n x eval_n]
     // anchor_embs and positive_embs are already L2-normalized by the model
@@ -91,8 +107,10 @@ pub fn evaluate(db_path: &str, checkpoint_dir: &str, small: bool, n: usize) -> R
                 (j, dot)
             })
             .collect();
+        // unwrap: L2-normalized embeddings have no NaN, so partial_cmp always succeeds
         sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
+        // unwrap: i is always in 0..eval_n, so it must appear in sims
         let rank = sims.iter().position(|(j, _)| *j == i).unwrap() + 1;
         mrr_sum += 1.0 / rank as f64;
         if rank <= 1 {
@@ -154,10 +172,7 @@ fn encode_batch<'a, B2: Backend>(
         );
 
         let embs = model.forward(ids_tensor, mask_tensor);
-        let emb_data: Vec<f32> = embs
-            .into_data()
-            .to_vec()
-            .context("extracting embeddings")?;
+        let emb_data: Vec<f32> = embs.into_data().to_vec().context("extracting embeddings")?;
         all_embs.extend_from_slice(&emb_data);
     }
 

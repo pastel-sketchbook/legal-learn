@@ -15,9 +15,9 @@ use burn::prelude::*;
 use burn::record::CompactRecorder;
 use burn::tensor::TensorData;
 
+use crate::data;
 use crate::model::EmbeddingModelConfig;
 use crate::tokenize::{self, MAX_SEQ_LEN, VOCAB_SIZE};
-use crate::data;
 
 type TrainBackend = Autodiff<burn::backend::Wgpu>;
 type InnerBackend = burn::backend::Wgpu;
@@ -198,7 +198,7 @@ pub fn train_distill(cfg: &DistillTrainConfig) -> Result<()> {
 
     tracing::info!(samples = samples.len(), "loaded teacher embeddings");
 
-    let teacher_dim = samples.first().map(|s| s.embedding.len()).unwrap_or(384);
+    let teacher_dim = samples.first().map_or(384, |s| s.embedding.len());
     tracing::info!(teacher_dim, "teacher embedding dimension");
 
     // Tokenizer
@@ -280,6 +280,7 @@ pub fn train_distill(cfg: &DistillTrainConfig) -> Result<()> {
             let mse = diff.powf_scalar(2.0).mean();
 
             // Extract loss value before backward
+            // unwrap: scalar tensor always yields exactly one element
             let loss_value: f64 = mse.clone().into_data().to_vec::<f32>().unwrap()[0] as f64;
 
             // Backward and optimize

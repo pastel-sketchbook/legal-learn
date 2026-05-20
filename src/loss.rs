@@ -38,8 +38,8 @@ pub fn info_nce_loss<B: Backend>(
 /// `MATRYOSHKA_DIMS`, re-normalize, compute InfoNCE, and average. This trains
 /// prefix subsets of dimensions to be independently useful.
 pub fn matryoshka_loss<B: Backend>(
-    anchors: Tensor<B, 2>,
-    positives: Tensor<B, 2>,
+    anchors: &Tensor<B, 2>,
+    positives: &Tensor<B, 2>,
     tau: f64,
 ) -> Tensor<B, 1> {
     let device = anchors.device();

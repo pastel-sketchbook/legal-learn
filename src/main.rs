@@ -1,4 +1,14 @@
 #![recursion_limit = "256"]
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::doc_markdown,
+    clippy::too_many_lines,
+    clippy::items_after_statements
+)]
 
 mod data;
 mod dataset;

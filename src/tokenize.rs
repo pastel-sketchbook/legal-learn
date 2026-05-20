@@ -28,7 +28,7 @@ pub fn train_tokenizer(db_path: &str, output_path: &str) -> Result<Tokenizer> {
 
     let mut texts: Vec<String> = stmt
         .query_map([], |row| row.get(0))?
-        .filter_map(|r| r.ok())
+        .filter_map(Result::ok)
         .collect();
 
     // Cap corpus size for tokenizer training (BPE merge is expensive on large text volume)
@@ -41,14 +41,18 @@ pub fn train_tokenizer(db_path: &str, output_path: &str) -> Result<Tokenizer> {
             "sampling corpus for tokenizer training"
         );
         let step = texts.len() / MAX_TOKENIZER_DOCS;
-        texts = texts.into_iter().step_by(step).take(MAX_TOKENIZER_DOCS).collect();
+        texts = texts
+            .into_iter()
+            .step_by(step)
+            .take(MAX_TOKENIZER_DOCS)
+            .collect();
     }
     // Truncate each doc to limit total token volume
-    texts.iter_mut().for_each(|t| {
+    for t in &mut texts {
         if t.len() > MAX_DOC_CHARS {
             *t = t.chars().take(MAX_DOC_CHARS).collect();
         }
-    });
+    }
 
     tracing::info!(docs = texts.len(), "training BPE tokenizer");
 
