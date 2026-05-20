@@ -187,6 +187,14 @@ pub fn export(db_path: &str, checkpoint_dir: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("loading model: {e}"))?;
     let model = model.load_record(record);
 
+    // Load sqlite-vec extension for vec0 virtual table support
+    unsafe {
+        #[allow(clippy::missing_transmute_annotations)]
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
+    }
+
     // Open database
     let conn = rusqlite::Connection::open(db_path)
         .with_context(|| format!("opening database for export: {db_path}"))?;
@@ -210,10 +218,18 @@ pub fn export(db_path: &str, checkpoint_dir: &str) -> Result<()> {
 
     // Clear old embeddings from this model
     conn.execute("DELETE FROM content_vectors WHERE model = ?1", [model_name])?;
+    conn.execute(
+        "DELETE FROM content_vectors_idx WHERE model = ?1",
+        [model_name],
+    )?;
 
     let mut insert_stmt = conn.prepare(
         "INSERT INTO content_vectors (hash, seq, pos, model, embedding, embedded_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    )?;
+    let mut insert_idx_stmt = conn.prepare(
+        "INSERT INTO content_vectors_idx (embedding, hash, model, seq, pos)
+     VALUES (?1, ?2, ?3, ?4, ?5)",
     )?;
 
     for (i, (hash, doc)) in rows.iter().enumerate() {
@@ -242,6 +258,10 @@ pub fn export(db_path: &str, checkpoint_dir: &str) -> Result<()> {
         let emb_json = serde_json::to_string(&emb_data)?;
 
         insert_stmt.execute(rusqlite::params![hash, 0, 0, model_name, emb_json, now])?;
+
+        // Insert into vec0 index as raw f32 bytes
+        let emb_bytes: Vec<u8> = emb_data.iter().flat_map(|f| f.to_le_bytes()).collect();
+        insert_idx_stmt.execute(rusqlite::params![emb_bytes, hash, model_name, 0, 0])?;
 
         if (i + 1) % 1000 == 0 {
             tracing::info!(progress = i + 1, total = rows.len(), "embedding documents");
