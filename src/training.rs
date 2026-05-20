@@ -159,7 +159,7 @@ pub fn run(cfg: &TrainConfig) -> Result<()> {
 }
 
 /// Export embeddings from a trained checkpoint back into data.db.
-pub fn export(db_path: &str, checkpoint_dir: &str) -> Result<()> {
+pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
     let device = <InnerBackend as Backend>::Device::default();
 
     // Load tokenizer
@@ -167,18 +167,42 @@ pub fn export(db_path: &str, checkpoint_dir: &str) -> Result<()> {
     let tokenizer = tokenize::load_tokenizer(&tokenizer_path)?;
 
     // Load model
-    let config = EmbeddingModelConfig {
-        vocab_size: VOCAB_SIZE,
-        max_seq_len: MAX_SEQ_LEN,
-        d_model: 384,
-        n_layers: 6,
-        n_heads: 6,
-        d_ff: 1536,
-        dropout: 0.1,
+    let config = if small {
+        EmbeddingModelConfig {
+            vocab_size: VOCAB_SIZE,
+            max_seq_len: MAX_SEQ_LEN,
+            d_model: 128,
+            n_layers: 2,
+            n_heads: 4,
+            d_ff: 512,
+            dropout: 0.1,
+        }
+    } else {
+        EmbeddingModelConfig {
+            vocab_size: VOCAB_SIZE,
+            max_seq_len: MAX_SEQ_LEN,
+            d_model: 384,
+            n_layers: 6,
+            n_heads: 6,
+            d_ff: 1536,
+            dropout: 0.1,
+        }
     };
     let model: crate::model::EmbeddingModel<InnerBackend> = config.init(&device);
 
-    let model_path = format!("{checkpoint_dir}/model_final");
+    // Try model_final first, then model_distilled
+    let model_path = {
+        let final_path = format!("{checkpoint_dir}/model_final");
+        let distilled_path = format!("{checkpoint_dir}/model_distilled");
+        if std::path::Path::new(&format!("{final_path}.mpk")).exists()
+            || std::path::Path::new(&format!("{final_path}.mpk.gz")).exists()
+        {
+            final_path
+        } else {
+            distilled_path
+        }
+    };
+    tracing::info!(path = %model_path, "loading model checkpoint");
     let record = CompactRecorder::new()
         .load(model_path.into(), &device)
         .map_err(|e| anyhow::anyhow!("loading model: {e}"))?;

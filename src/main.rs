@@ -79,6 +79,10 @@ enum Command {
         /// Checkpoint directory to load model from
         #[arg(long)]
         checkpoint: String,
+
+        /// Use small model config (must match training)
+        #[arg(long)]
+        small: bool,
     },
 
     /// Generate teacher embeddings using llama-embedding
@@ -178,9 +182,13 @@ fn main() -> Result<()> {
                 warmup_steps,
             })?;
         }
-        Command::Export { db, checkpoint } => {
-            tracing::info!(db = %db, checkpoint = %checkpoint, "exporting embeddings");
-            training::export(&db, &checkpoint)?;
+        Command::Export {
+            db,
+            checkpoint,
+            small,
+        } => {
+            tracing::info!(db = %db, checkpoint = %checkpoint, small, "exporting embeddings");
+            training::export(&db, &checkpoint, small)?;
         }
         Command::DistillGenerate {
             db,
