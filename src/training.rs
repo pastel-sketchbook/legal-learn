@@ -9,7 +9,6 @@ use burn::optim::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::optim::lr_scheduler::linear::LinearLrSchedulerConfig;
 use burn::prelude::*;
 use burn::record::{CompactRecorder, Recorder};
-use burn::train::metric::LossMetric;
 use burn::train::{Learner, SupervisedTraining};
 
 use crate::data;
@@ -17,9 +16,9 @@ use crate::dataset::{PairBatcher, PairDataset};
 use crate::model::EmbeddingModelConfig;
 use crate::tokenize::{self, MAX_SEQ_LEN, VOCAB_SIZE};
 
-/// Default backend for training.
-type TrainBackend = Autodiff<burn::backend::NdArray>;
-type InnerBackend = burn::backend::NdArray;
+/// Default backend for training (wgpu = Metal on macOS).
+type TrainBackend = Autodiff<burn::backend::Wgpu>;
+type InnerBackend = burn::backend::Wgpu;
 
 /// Training run configuration.
 pub struct TrainConfig {
@@ -143,8 +142,6 @@ pub fn run(cfg: &TrainConfig) -> Result<()> {
 
     // 8. Supervised training
     let result = SupervisedTraining::new(output_dir, dataloader_train, dataloader_valid)
-        .metric_train_numeric(LossMetric::<InnerBackend>::new())
-        .metric_valid_numeric(LossMetric::<InnerBackend>::new())
         .with_file_checkpointer(CompactRecorder::new())
         .num_epochs(epochs)
         .summary()

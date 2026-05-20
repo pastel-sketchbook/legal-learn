@@ -23,17 +23,41 @@ pub fn load_pairs(db_path: &str) -> Result<Vec<TextPair>> {
     load_pairs_limited(db_path, None)
 }
 
-/// Load precedent-derived training pairs with an optional cap for fast debugging.
+/// Load training pairs from all collections with an optional cap for fast debugging.
 pub fn load_pairs_limited(db_path: &str, limit: Option<usize>) -> Result<Vec<TextPair>> {
     let conn = Connection::open(db_path).with_context(|| format!("opening database: {db_path}"))?;
 
+    let mut pairs = Vec::new();
+
+    // 1. Precedent pairs: 판결요지 → 참조조문/사건명
+    load_precedent_pairs(&conn, &mut pairs, limit)?;
+    let precedent_count = pairs.len();
+
+    // 2. Law pairs: article heading → article body
+    let law_limit = limit.map(|l| l.saturating_sub(pairs.len()));
+    if law_limit != Some(0) {
+        load_law_pairs(&conn, &mut pairs, law_limit)?;
+    }
+
+    tracing::info!(
+        precedent = precedent_count,
+        law = pairs.len() - precedent_count,
+        total = pairs.len(),
+        "loaded training pairs"
+    );
+    Ok(pairs)
+}
+
+fn load_precedent_pairs(
+    conn: &Connection,
+    pairs: &mut Vec<TextPair>,
+    limit: Option<usize>,
+) -> Result<()> {
     let mut stmt = conn.prepare(
         "SELECT c.doc FROM content c
      JOIN documents d ON d.hash = c.hash
      WHERE d.collection = 'precedents' AND d.active = 1",
     )?;
-
-    let mut pairs = Vec::new();
 
     let rows = stmt.query_map([], |row| {
         let doc: String = row.get(0)?;
@@ -42,16 +66,43 @@ pub fn load_pairs_limited(db_path: &str, limit: Option<usize>) -> Result<Vec<Tex
 
     for row in rows {
         let doc = row?;
-        if let Some(pair) = extract_pair(&doc) {
+        if let Some(pair) = extract_precedent_pair(&doc) {
             pairs.push(pair);
-            if limit.is_some_and(|limit| pairs.len() >= limit) {
+            if limit.is_some_and(|l| pairs.len() >= l) {
                 break;
             }
         }
     }
+    Ok(())
+}
 
-    tracing::info!(count = pairs.len(), "loaded training pairs");
-    Ok(pairs)
+fn load_law_pairs(
+    conn: &Connection,
+    pairs: &mut Vec<TextPair>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT c.doc FROM content c
+     JOIN documents d ON d.hash = c.hash
+     WHERE d.collection = 'laws' AND d.active = 1",
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        let doc: String = row.get(0)?;
+        Ok(doc)
+    })?;
+
+    for row in rows {
+        let doc = row?;
+        let law_pairs = extract_law_pairs(&doc);
+        for pair in law_pairs {
+            pairs.push(pair);
+            if limit.is_some_and(|l| pairs.len() >= l) {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn inspect_corpus(db_path: &str) -> Result<CorpusStats> {
@@ -86,7 +137,7 @@ fn count_active_documents(conn: &Connection, collection: Option<&str>) -> Result
 }
 
 /// Extract structured fields from a precedent markdown document.
-fn extract_pair(doc: &str) -> Option<TextPair> {
+fn extract_precedent_pair(doc: &str) -> Option<TextPair> {
     let summary = extract_section(doc, "판결요지")?;
     // Prefer 참조조문 as the positive; fall back to 사건명 from frontmatter
     let positive =
@@ -100,6 +151,57 @@ fn extract_pair(doc: &str) -> Option<TextPair> {
         anchor: summary,
         positive,
     })
+}
+
+/// Extract (article heading, article body) pairs from a law document.
+/// Each `##### 제N조 (title)` becomes a pair: title → body.
+fn extract_law_pairs(doc: &str) -> Vec<TextPair> {
+    let mut pairs = Vec::new();
+    let title = extract_frontmatter_field(doc, "제목").unwrap_or_default();
+
+    // Find article headings: ##### 제N조 (...)
+    let lines: Vec<&str> = doc.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
+        if line.starts_with("##### 제") && line.contains('조') {
+            let heading = line.trim_start_matches('#').trim().to_string();
+            // Collect body until next heading
+            let mut body = String::new();
+            i += 1;
+            while i < lines.len() {
+                let next = lines[i];
+                if next.trim().starts_with('#') {
+                    break;
+                }
+                if !next.trim().is_empty() {
+                    if !body.is_empty() {
+                        body.push(' ');
+                    }
+                    body.push_str(next.trim());
+                }
+                i += 1;
+            }
+
+            if heading.len() >= 5 && body.len() >= 20 {
+                // Pair 1: article heading → article body
+                pairs.push(TextPair {
+                    anchor: heading.clone(),
+                    positive: body.clone(),
+                });
+                // Pair 2: law title → article heading (cross-reference)
+                if !title.is_empty() {
+                    pairs.push(TextPair {
+                        anchor: title.clone(),
+                        positive: heading,
+                    });
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    pairs
 }
 
 /// Extract text under a `## heading` section.
