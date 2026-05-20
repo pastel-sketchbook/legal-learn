@@ -244,6 +244,8 @@ pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
         [model_name],
     )?;
 
+    conn.execute_batch("BEGIN")?;
+
     let mut insert_stmt = conn.prepare(
         "INSERT OR REPLACE INTO content_vectors (hash, seq, pos, model, embedding, embedded_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -253,42 +255,54 @@ pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
      VALUES (?1, ?2, ?3, ?4, ?5)",
     )?;
 
-    for (i, (hash, doc)) in rows.iter().enumerate() {
-        let (ids, mask) = tokenize::encode(&tokenizer, doc);
+    let batch_size = 64;
+    for chunk_start in (0..rows.len()).step_by(batch_size) {
+        let chunk_end = (chunk_start + batch_size).min(rows.len());
+        let chunk = &rows[chunk_start..chunk_end];
+        let actual_batch = chunk.len();
 
-        let ids_tensor = Tensor::<InnerBackend, 1, Int>::from_data(
-            TensorData::new(
-                ids.iter().map(|&v| v as i64).collect::<Vec<_>>(),
-                [MAX_SEQ_LEN],
-            ),
+        // Tokenize batch
+        let mut all_ids: Vec<i64> = Vec::with_capacity(actual_batch * MAX_SEQ_LEN);
+        let mut all_mask: Vec<bool> = Vec::with_capacity(actual_batch * MAX_SEQ_LEN);
+        for (_hash, doc) in chunk {
+            let (ids, mask) = tokenize::encode(&tokenizer, doc);
+            all_ids.extend(ids.iter().map(|&v| v as i64));
+            all_mask.extend_from_slice(&mask);
+        }
+
+        let ids_tensor = Tensor::<InnerBackend, 2, Int>::from_data(
+            TensorData::new(all_ids, [actual_batch, MAX_SEQ_LEN]),
             &device,
-        )
-        .unsqueeze::<2>();
+        );
+        let mask_tensor = Tensor::<InnerBackend, 2, Bool>::from_data(
+            TensorData::new(all_mask, [actual_batch, MAX_SEQ_LEN]),
+            &device,
+        );
 
-        let mask_tensor =
-            Tensor::<InnerBackend, 1, Bool>::from_data(TensorData::from(mask.as_slice()), &device)
-                .unsqueeze::<2>();
-
-        let embedding = model.forward(ids_tensor, mask_tensor);
-        let emb_data: Vec<f32> = embedding
-            .squeeze::<1>()
+        // Forward pass for entire batch → [batch, d_model]
+        let embeddings = model.forward(ids_tensor, mask_tensor);
+        let emb_data: Vec<f32> = embeddings
             .into_data()
             .to_vec()
             .context("extracting embedding tensor data")?;
 
-        let emb_json = serde_json::to_string(&emb_data)?;
+        let d_model = if small { 128 } else { 384 };
+        for (j, (hash, _doc)) in chunk.iter().enumerate() {
+            let emb = &emb_data[j * d_model..(j + 1) * d_model];
+            let emb_json = serde_json::to_string(emb)?;
 
-        insert_stmt.execute(rusqlite::params![hash, 0, 0, model_name, emb_json, now])?;
+            insert_stmt.execute(rusqlite::params![hash, 0, 0, model_name, emb_json, now])?;
 
-        // Insert into vec0 index as raw f32 bytes
-        let emb_bytes: Vec<u8> = emb_data.iter().flat_map(|f| f.to_le_bytes()).collect();
-        insert_idx_stmt.execute(rusqlite::params![emb_bytes, hash, model_name, 0, 0])?;
+            let emb_bytes: Vec<u8> = emb.iter().flat_map(|f| f.to_le_bytes()).collect();
+            insert_idx_stmt.execute(rusqlite::params![emb_bytes, hash, model_name, 0, 0])?;
+        }
 
-        if (i + 1) % 1000 == 0 {
-            tracing::info!(progress = i + 1, total = rows.len(), "embedding documents");
+        if chunk_end % 10000 < batch_size {
+            tracing::info!(progress = chunk_end, total = rows.len(), "embedding documents");
         }
     }
 
+    conn.execute_batch("COMMIT")?;
     tracing::info!("export complete: {} embeddings written", rows.len());
     Ok(())
 }
