@@ -108,6 +108,30 @@ tasks:
     cmds:
       - target/release/$PGM_NAME export --db "{{.LEGAL_QMD_DB}}" --checkpoint "{{.CHECKPOINT_DIR}}" {{.CLI_ARGS}}
 
+  distill:generate:
+    desc: Generate teacher embeddings from llama-embedding (EmbeddingGemma-300M)
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME distill-generate --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/teacher_embeddings.jsonl" {{.CLI_ARGS}}
+
+  distill:train:
+    desc: Train student model via distillation from teacher embeddings
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME distill-train --db "{{.LEGAL_QMD_DB}}" --teacher "{{.CHECKPOINT_DIR}}/teacher_embeddings.jsonl" --output "{{.CHECKPOINT_DIR}}/distilled" {{.CLI_ARGS}}
+
+  distill:
+    desc: Full distillation pipeline (generate teachers then train)
+    deps: [build]
+    cmds:
+      - task: distill:generate
+      - task: distill:train
+
+  plot:
+    desc: Plot per-epoch loss comparison across checkpoint runs
+    cmds:
+      - uv run scripts/plot_loss.py --checkpoints-dir "{{.CHECKPOINT_DIR}}" {{.CLI_ARGS}}
+
   clean:
     desc: Remove build artifacts
     cmds:
