@@ -245,7 +245,7 @@ pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
     )?;
 
     let mut insert_stmt = conn.prepare(
-        "INSERT INTO content_vectors (hash, seq, pos, model, embedding, embedded_at)
+        "INSERT OR REPLACE INTO content_vectors (hash, seq, pos, model, embedding, embedded_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )?;
     let mut insert_idx_stmt = conn.prepare(
