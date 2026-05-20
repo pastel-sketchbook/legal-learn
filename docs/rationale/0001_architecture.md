@@ -158,3 +158,22 @@ in ~1-2 minutes.
 - **Multi-collection weighting** — balance precedent vs law pairs by collection
   size or downstream task importance
 - **Evaluation** — retrieval metrics (MRR, recall@k) on held-out pairs
+
+## Training Time Estimates (M1 Pro, Wgpu/Metal)
+
+Calibrated from 900 samples / batch 32 / small model = 26s/epoch.
+
+| Scenario | Per Epoch | 10 Epochs |
+|----------|-----------|-----------|
+| Small (2L/128d), 10K pairs | ~5 min | ~48 min |
+| Full (6L/384d), 10K pairs | ~43 min | ~7 hours |
+| Small, full 230K pairs | ~110 min | ~18 hours |
+| Full, full 230K pairs | ~16.5 hours | ~7 days |
+
+**Best quality/compute tradeoff:** 10K teacher distillation samples → full model,
+10 epochs ≈ 7 hours (`task distill:full`). Generates teachers via llama-embedding
+(~30 min for 10K), then trains full 6L/384d student with MSE loss.
+
+### Baseline (small distilled, 931 samples, 5 epochs)
+
+- MRR: 0.055 | R@1: 1% | R@5: 5.5% | R@10: 9.5% (near-random on 200 pairs)

@@ -159,6 +159,14 @@ tasks:
       - task: distill:generate
       - task: distill:train
 
+  distill:full:
+    desc: Best quality/compute distillation (10K teachers → full model, 10 epochs, ~7h)
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME distill-generate --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/teacher_10k.jsonl" --limit 10000 {{.CLI_ARGS}}
+      - target/release/$PGM_NAME distill-train --db "{{.LEGAL_QMD_DB}}" --teacher "{{.CHECKPOINT_DIR}}/teacher_10k.jsonl" --output "{{.CHECKPOINT_DIR}}/distilled-full" --epochs 10 {{.CLI_ARGS}}
+      - target/release/$PGM_NAME export --db "{{.LEGAL_QMD_DB}}" --checkpoint "{{.CHECKPOINT_DIR}}/distilled-full" {{.CLI_ARGS}}
+
   plot:
     desc: Plot per-epoch loss comparison across checkpoint runs
     cmds:
