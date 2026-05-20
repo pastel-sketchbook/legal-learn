@@ -164,6 +164,12 @@ tasks:
     cmds:
       - uv run scripts/plot_loss.py --checkpoints-dir "{{.CHECKPOINT_DIR}}" {{.CLI_ARGS}}
 
+  check:search:
+    desc: Verify embeddings work via legal-ko hybrid search
+    dir: ../legal-ko
+    cmds:
+      - cargo run --bin legal-ko-cli -- zmd search "손해배상 청구" {{.CLI_ARGS}}
+
   clean:
     desc: Remove build artifacts
     cmds:
