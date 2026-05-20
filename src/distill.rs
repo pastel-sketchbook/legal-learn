@@ -125,7 +125,6 @@ fn run_llama_embedding(model_path: &str, texts: &[String]) -> Result<Vec<Vec<f32
             separator,
             "--prompt",
             &combined,
-            "--log-disable",
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -139,16 +138,21 @@ fn run_llama_embedding(model_path: &str, texts: &[String]) -> Result<Vec<Vec<f32
 
     let stdout = String::from_utf8(output.stdout).context("invalid utf8 from llama-embedding")?;
 
-    // Parse JSON array of embedding objects
-    let parsed: Vec<serde_json::Value> =
-        serde_json::from_str(&stdout).context("parsing llama-embedding output")?;
+    // Parse OpenAI-style response: {"data": [{"embedding": [...]}, ...]}
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).context("parsing llama-embedding JSON output")?;
+
+    let data = parsed
+        .get("data")
+        .and_then(|v| v.as_array())
+        .context("missing 'data' array in llama-embedding output")?;
 
     let mut embeddings = Vec::new();
-    for obj in parsed {
+    for obj in data {
         let emb = obj
             .get("embedding")
             .and_then(|v| v.as_array())
-            .context("missing embedding field")?;
+            .context("missing embedding field in response object")?;
         let values: Vec<f32> = emb
             .iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
