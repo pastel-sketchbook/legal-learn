@@ -3,6 +3,7 @@
 mod data;
 mod dataset;
 mod distill;
+mod eval;
 mod loss;
 mod model;
 mod tokenize;
@@ -138,6 +139,25 @@ enum Command {
         #[arg(long)]
         small: bool,
     },
+
+    /// Evaluate retrieval quality (MRR, recall@k) on held-out pairs
+    Eval {
+        /// Path to .qmd/data.db
+        #[arg(long, default_value = "../legal-ko/.qmd/data.db")]
+        db: String,
+
+        /// Checkpoint directory to load model from
+        #[arg(long, default_value = "checkpoints")]
+        checkpoint: String,
+
+        /// Use small model config
+        #[arg(long)]
+        small: bool,
+
+        /// Number of eval pairs (sampled from tail of dataset)
+        #[arg(long, default_value_t = 100)]
+        n: usize,
+    },
 }
 
 fn main() -> Result<()> {
@@ -226,6 +246,15 @@ fn main() -> Result<()> {
                 lr,
                 small,
             })?;
+        }
+        Command::Eval {
+            db,
+            checkpoint,
+            small,
+            n,
+        } => {
+            tracing::info!(checkpoint = %checkpoint, n, small, "evaluating retrieval quality");
+            eval::evaluate(&db, &checkpoint, small, n)?;
         }
     }
 
