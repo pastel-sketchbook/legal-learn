@@ -22,8 +22,14 @@ use crate::data;
 type TrainBackend = Autodiff<burn::backend::Wgpu>;
 type InnerBackend = burn::backend::Wgpu;
 
-/// Default teacher model path (EmbeddingGemma 300M Q4)
-pub const DEFAULT_TEACHER_MODEL: &str = "/Users/AD9C65/.cache/huggingface/hub/models--ggml-org--embeddinggemma-300M-qat-q4_0-GGUF/snapshots/8dd0ca2a66a8f14470acb0e2a71f801afbc5fb73/embeddinggemma-300M-qat-Q4_0.gguf";
+/// Default teacher model path (EmbeddingGemma 300M Q4), relative to home.
+const DEFAULT_TEACHER_MODEL_SUFFIX: &str = ".cache/huggingface/hub/models--ggml-org--embeddinggemma-300M-qat-q4_0-GGUF/snapshots/8dd0ca2a66a8f14470acb0e2a71f801afbc5fb73/embeddinggemma-300M-qat-Q4_0.gguf";
+
+/// Resolve the default teacher model path using $HOME.
+pub fn default_teacher_model() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+    format!("{home}/{DEFAULT_TEACHER_MODEL_SUFFIX}")
+}
 
 /// Configuration for teacher embedding generation.
 pub struct TeacherConfig {

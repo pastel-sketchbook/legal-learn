@@ -189,7 +189,7 @@ fn main() -> Result<()> {
             batch_size,
             limit,
         } => {
-            let model_path = model.unwrap_or_else(|| distill::DEFAULT_TEACHER_MODEL.to_string());
+            let model_path = model.unwrap_or_else(distill::default_teacher_model);
             tracing::info!(db = %db, model = %model_path, "generating teacher embeddings");
             distill::generate_teachers(&distill::TeacherConfig {
                 db_path: db,
