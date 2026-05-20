@@ -1,4 +1,4 @@
-# legal-learn
+## legal-learn
 
 Burn-based Rust training pipeline for learning Korean legal embeddings from
 laws and precedents.
@@ -6,7 +6,7 @@ laws and precedents.
 Trains a local embedding model against the indexed corpus produced by the
 sibling `legal-ko` repo at `../legal-ko/.qmd/data.db`.
 
-## Goal
+### Goal
 
 - Train a local Burn model in Rust over Korean legal text
 - Start with a contrastive embedding model (384-dim, Matryoshka)
@@ -14,7 +14,7 @@ sibling `legal-ko` repo at `../legal-ko/.qmd/data.db`.
 - Export embeddings into SQLite vec0 index for similarity search
 - Future: continued pretraining with `Qwen3-0.6B-Base`
 
-## Current Pipeline
+### Current Pipeline
 
 1. **Data extraction** — reads precedent and law documents from `data.db`; extracts
    contrastive pairs (판결요지→참조조문, article heading→body, law title→article)
@@ -26,14 +26,14 @@ sibling `legal-ko` repo at `../legal-ko/.qmd/data.db`.
 5. **Export** — writes 384-dim vectors to `content_vectors` and `content_vectors_idx`
    (vec0) for downstream similarity search
 
-## Dataset
+### Dataset
 
 - Database: `../legal-ko/.qmd/data.db`
 - Tables used: `documents`, `content`, `content_vectors`, `content_vectors_idx`
 - Collections: `precedents` (판결요지 pairs), `laws` (article-level pairs)
 - Scale: ~306K documents, 4 collections
 
-## Usage
+### Usage
 
 ```bash
 # Contrastive training (Metal-accelerated)
@@ -69,7 +69,7 @@ task export             # Write embeddings to database
 task inspect            # Corpus statistics
 ```
 
-## Architecture
+### Architecture
 
 ```
 src/
@@ -83,11 +83,11 @@ src/
   distill.rs   — llama.cpp teacher generation + MSE distillation training
 ```
 
-## Hardware
+### Hardware
 
 Tested on Apple M1 Pro (16 GB). Backend: `burn::backend::Wgpu` (Metal 4).
 
-## Notes
+### Notes
 
 - Backend: wgpu for Metal GPU acceleration (previously ndarray)
 - Optimizer: Adam with cosine annealing (optional linear warmup)
