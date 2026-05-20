@@ -96,7 +96,7 @@ enum Command {
         model: Option<String>,
 
         /// Batch size for llama-embedding calls
-        #[arg(long, default_value_t = 64)]
+        #[arg(long, default_value_t = 8)]
         batch_size: usize,
 
         /// Limit number of training pairs

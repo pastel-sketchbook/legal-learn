@@ -106,10 +106,18 @@ pub fn generate_teachers(cfg: &TeacherConfig) -> Result<()> {
     Ok(())
 }
 
+/// Max characters per text sent to llama-embedding (context window safety).
+const MAX_TEXT_CHARS: usize = 512;
+
 /// Run llama-embedding on a batch of texts and return their embeddings.
 fn run_llama_embedding(model_path: &str, texts: &[String]) -> Result<Vec<Vec<f32>>> {
     let separator = "<#sep#>";
-    let combined = texts.join(separator);
+    // Truncate each text to fit within context window
+    let truncated: Vec<String> = texts
+        .iter()
+        .map(|t| t.chars().take(MAX_TEXT_CHARS).collect())
+        .collect();
+    let combined = truncated.join(separator);
 
     let output = Command::new("llama-embedding")
         .args([
