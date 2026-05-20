@@ -26,10 +26,23 @@ pub fn train_tokenizer(db_path: &str, output_path: &str) -> Result<Tokenizer> {
      WHERE d.active = 1",
     )?;
 
-    let texts: Vec<String> = stmt
+    let mut texts: Vec<String> = stmt
         .query_map([], |row| row.get(0))?
         .filter_map(|r| r.ok())
         .collect();
+
+    // Cap corpus size for tokenizer training (BPE merge is O(n^2) on corpus size)
+    const MAX_TOKENIZER_DOCS: usize = 10_000;
+    if texts.len() > MAX_TOKENIZER_DOCS {
+        tracing::info!(
+            original = texts.len(),
+            sampled = MAX_TOKENIZER_DOCS,
+            "sampling corpus for tokenizer training"
+        );
+        // Take evenly spaced samples
+        let step = texts.len() / MAX_TOKENIZER_DOCS;
+        texts = texts.into_iter().step_by(step).take(MAX_TOKENIZER_DOCS).collect();
+    }
 
     tracing::info!(docs = texts.len(), "training BPE tokenizer");
 
