@@ -82,6 +82,15 @@ into Burn.
 768-dim output, 277MB GGUF, runs in <2s on M1. Teacher embeddings are
 truncated from 768→384 for the student target.
 
+**Operational constraints:**
+- Texts are truncated to 512 characters before sending to `llama-embedding`
+  (the model's context window cannot handle full 4.7KB average legal documents
+  concatenated across a batch)
+- Default batch size of 8 texts per `llama-embedding` invocation balances
+  throughput against context overflow
+- Each invocation reloads the model (~1.5s fixed cost), making small batches
+  acceptable for the total volume (~930 unique texts for 500 pairs)
+
 ### 6. vec0 index population during export (not separate indexing step)
 
 **Why:** The `content_vectors_idx` virtual table is what downstream search
