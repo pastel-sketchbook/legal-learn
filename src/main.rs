@@ -1,5 +1,8 @@
+#![recursion_limit = "256"]
+
 mod data;
 mod dataset;
+mod distill;
 mod loss;
 mod model;
 mod tokenize;
@@ -77,6 +80,60 @@ enum Command {
         #[arg(long)]
         checkpoint: String,
     },
+
+    /// Generate teacher embeddings using llama-embedding
+    DistillGenerate {
+        /// Path to .qmd/data.db
+        #[arg(long, default_value = "../legal-ko/.qmd/data.db")]
+        db: String,
+
+        /// Output JSONL file for teacher embeddings
+        #[arg(long, default_value = "checkpoints/teacher_embeddings.jsonl")]
+        output: String,
+
+        /// Path to GGUF model for llama-embedding
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Batch size for llama-embedding calls
+        #[arg(long, default_value_t = 64)]
+        batch_size: usize,
+
+        /// Limit number of training pairs
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+
+    /// Train student model via distillation from teacher embeddings
+    DistillTrain {
+        /// Path to .qmd/data.db (for tokenizer training)
+        #[arg(long, default_value = "../legal-ko/.qmd/data.db")]
+        db: String,
+
+        /// Path to teacher embeddings JSONL
+        #[arg(long, default_value = "checkpoints/teacher_embeddings.jsonl")]
+        teacher: String,
+
+        /// Output directory for checkpoints
+        #[arg(long, default_value = "checkpoints")]
+        output: String,
+
+        /// Number of training epochs
+        #[arg(long, default_value_t = 10)]
+        epochs: usize,
+
+        /// Batch size
+        #[arg(long, default_value_t = 32)]
+        batch_size: usize,
+
+        /// Learning rate
+        #[arg(long, default_value_t = 1e-4)]
+        lr: f64,
+
+        /// Use a small model
+        #[arg(long)]
+        small: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -124,6 +181,43 @@ fn main() -> Result<()> {
         Command::Export { db, checkpoint } => {
             tracing::info!(db = %db, checkpoint = %checkpoint, "exporting embeddings");
             training::export(&db, &checkpoint)?;
+        }
+        Command::DistillGenerate {
+            db,
+            output,
+            model,
+            batch_size,
+            limit,
+        } => {
+            let model_path = model.unwrap_or_else(|| distill::DEFAULT_TEACHER_MODEL.to_string());
+            tracing::info!(db = %db, model = %model_path, "generating teacher embeddings");
+            distill::generate_teachers(&distill::TeacherConfig {
+                db_path: db,
+                output_path: output,
+                model_path,
+                batch_size,
+                limit,
+            })?;
+        }
+        Command::DistillTrain {
+            db,
+            teacher,
+            output,
+            epochs,
+            batch_size,
+            lr,
+            small,
+        } => {
+            tracing::info!(teacher = %teacher, epochs, "starting distillation training");
+            distill::train_distill(&distill::DistillTrainConfig {
+                db_path: db,
+                teacher_path: teacher,
+                output_dir: output,
+                epochs,
+                batch_size,
+                lr,
+                small,
+            })?;
         }
     }
 
