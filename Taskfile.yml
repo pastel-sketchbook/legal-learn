@@ -132,6 +132,26 @@ tasks:
     cmds:
       - target/release/$PGM_NAME distill-train --db "{{.LEGAL_QMD_DB}}" --teacher "{{.CHECKPOINT_DIR}}/teacher_embeddings.jsonl" --output "{{.CHECKPOINT_DIR}}/distilled" --small --epochs 5 {{.CLI_ARGS}}
 
+  distill:export:
+    desc: Export distilled full model embeddings to data.db
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME export --db "{{.LEGAL_QMD_DB}}" --checkpoint "{{.CHECKPOINT_DIR}}/distilled" {{.CLI_ARGS}}
+
+  distill:export:small:
+    desc: Export distilled small model embeddings to data.db
+    deps: [build]
+    cmds:
+      - target/release/$PGM_NAME export --db "{{.LEGAL_QMD_DB}}" --checkpoint "{{.CHECKPOINT_DIR}}/distilled" --small {{.CLI_ARGS}}
+
+  distill:fast:
+    desc: Fast distillation pipeline (generate 500 → train small → export small)
+    deps: [build]
+    cmds:
+      - task: distill:generate:fast
+      - task: distill:train:fast
+      - task: distill:export:small
+
   distill:
     desc: Full distillation pipeline (generate teachers then train)
     deps: [build]
