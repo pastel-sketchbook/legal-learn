@@ -160,7 +160,7 @@ tasks:
       - task: distill:train
 
   distill:full:
-    desc: Best quality/compute distillation (10K teachers → full model, 10 epochs, ~7h)
+    desc: Best quality/compute distillation (10K teachers → full model, 10 epochs, ~6h)
     deps: [build]
     cmds:
       - target/release/$PGM_NAME distill-generate --db "{{.LEGAL_QMD_DB}}" --output "{{.CHECKPOINT_DIR}}/teacher_10k.jsonl" --limit 10000 {{.CLI_ARGS}}

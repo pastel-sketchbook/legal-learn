@@ -166,13 +166,15 @@ Calibrated from 900 samples / batch 32 / small model = 26s/epoch.
 | Scenario | Per Epoch | 10 Epochs |
 |----------|-----------|-----------|
 | Small (2L/128d), 10K pairs | ~5 min | ~48 min |
-| Full (6L/384d), 10K pairs | ~43 min | ~7 hours |
+| Full (6L/384d), 10K pairs | ~21 min | ~3.5 hours |
 | Small, full 230K pairs | ~110 min | ~18 hours |
 | Full, full 230K pairs | ~16.5 hours | ~7 days |
 
 **Best quality/compute tradeoff:** 10K teacher distillation samples → full model,
-10 epochs ≈ 7 hours (`task distill:full`). Generates teachers via llama-embedding
-(~30 min for 10K), then trains full 6L/384d student with MSE loss.
+10 epochs ≈ 6 hours (`task distill:full`). Observed breakdown (M1 Pro, 2026-05-21):
+- distill-generate: ~30 min for 10K teachers via llama-embedding
+- distill-train: ~3.5h for 10 epochs (full 6L/384d, MSE loss)
+- export: ~2.5h for 306K embeddings
 
 ### Baseline (small distilled, 931 samples, 5 epochs)
 
