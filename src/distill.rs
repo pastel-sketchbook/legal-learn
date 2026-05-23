@@ -179,7 +179,7 @@ fn run_llama_embedding(model_path: &str, texts: &[String]) -> Result<Vec<Vec<f32
 
 /// Train the student model via distillation against teacher embeddings.
 pub fn train_distill(cfg: &DistillTrainConfig) -> Result<()> {
-    let device = <InnerBackend as Backend>::Device::default();
+    let device = Device::<InnerBackend>::default();
 
     // Load teacher embeddings
     let file = std::fs::File::open(&cfg.teacher_path)
@@ -280,8 +280,12 @@ pub fn train_distill(cfg: &DistillTrainConfig) -> Result<()> {
             let mse = diff.powf_scalar(2.0).mean();
 
             // Extract loss value before backward
-            // unwrap: scalar tensor always yields exactly one element
-            let loss_value: f64 = mse.clone().into_data().to_vec::<f32>().unwrap()[0] as f64;
+            // scalar tensor always yields exactly one element
+            let loss_value: f64 =
+                mse.clone()
+                    .into_data()
+                    .to_vec::<f32>()
+                    .expect("scalar tensor yields one f32 element")[0] as f64;
 
             // Backward and optimize
             let grads = mse.backward();

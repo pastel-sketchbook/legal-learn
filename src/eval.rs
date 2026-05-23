@@ -11,7 +11,7 @@ type B = burn::backend::Wgpu;
 /// Evaluate retrieval quality using held-out text pairs.
 /// Reports MRR and recall@1/5/10.
 pub fn evaluate(db_path: &str, checkpoint_dir: &str, small: bool, n: usize) -> Result<()> {
-    let device = <B as Backend>::Device::default();
+    let device = Device::<B>::default();
 
     // Load tokenizer and model
     let tokenizer_path = format!("{checkpoint_dir}/tokenizer.json");
@@ -107,11 +107,18 @@ pub fn evaluate(db_path: &str, checkpoint_dir: &str, small: bool, n: usize) -> R
                 (j, dot)
             })
             .collect();
-        // unwrap: L2-normalized embeddings have no NaN, so partial_cmp always succeeds
-        sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        // L2-normalized embeddings have no NaN, so partial_cmp always succeeds
+        sims.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .expect("no NaN in L2-normalized cosine sim")
+        });
 
-        // unwrap: i is always in 0..eval_n, so it must appear in sims
-        let rank = sims.iter().position(|(j, _)| *j == i).unwrap() + 1;
+        // i is always in 0..eval_n, so it must appear in sims
+        let rank = sims
+            .iter()
+            .position(|(j, _)| *j == i)
+            .expect("query index must exist in sims")
+            + 1;
         mrr_sum += 1.0 / rank as f64;
         if rank <= 1 {
             recall_at_1 += 1;

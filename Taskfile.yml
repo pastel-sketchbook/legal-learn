@@ -209,7 +209,7 @@ tasks:
       - |
         NEW="{{.MAJOR}}.{{.MINOR}}.$(({{.PATCH}} + 1))"
         echo "$NEW" > VERSION
-        sed -i '' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
+        sed -i'' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
         cargo generate-lockfile
         echo "Bumped {{.CURRENT}} → $NEW"
 
@@ -226,7 +226,7 @@ tasks:
       - |
         NEW="{{.MAJOR}}.$(({{.MINOR}} + 1)).0"
         echo "$NEW" > VERSION
-        sed -i '' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
+        sed -i'' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
         cargo generate-lockfile
         echo "Bumped {{.CURRENT}} → $NEW"
 
@@ -241,7 +241,7 @@ tasks:
       - |
         NEW="$(({{.MAJOR}} + 1)).0.0"
         echo "$NEW" > VERSION
-        sed -i '' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
+        sed -i'' "s/^version = \"{{.CURRENT}}\"/version = \"$NEW\"/" Cargo.toml
         cargo generate-lockfile
         echo "Bumped {{.CURRENT}} → $NEW"
 

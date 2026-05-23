@@ -45,7 +45,7 @@ pub fn run(cfg: &TrainConfig) -> Result<()> {
         warmup_steps,
     } = cfg;
     let (epochs, batch_size, lr, warmup_steps) = (*epochs, *batch_size, *lr, *warmup_steps);
-    let device = <InnerBackend as Backend>::Device::default();
+    let device = Device::<InnerBackend>::default();
 
     // 1. Tokenizer
     let tokenizer_path = format!("{output_dir}/tokenizer.json");
@@ -160,7 +160,7 @@ pub fn run(cfg: &TrainConfig) -> Result<()> {
 
 /// Export embeddings from a trained checkpoint back into data.db.
 pub fn export(db_path: &str, checkpoint_dir: &str, small: bool) -> Result<()> {
-    let device = <InnerBackend as Backend>::Device::default();
+    let device = Device::<InnerBackend>::default();
 
     // Load tokenizer
     let tokenizer_path = format!("{checkpoint_dir}/tokenizer.json");

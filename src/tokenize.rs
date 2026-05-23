@@ -73,10 +73,14 @@ pub fn train_tokenizer(db_path: &str, output_path: &str) -> Result<Tokenizer> {
         .map_err(|e| anyhow::anyhow!("BPE training failed: {e}"))?;
 
     let mut tokenizer = Tokenizer::new(model);
-    tokenizer.with_normalizer(Some(NFC));
+    tokenizer
+        .with_normalizer(Some(NFC))
+        .map_err(|e| anyhow::anyhow!("setting normalizer failed: {e}"))?;
     tokenizer.with_pre_tokenizer(Some(Whitespace));
 
-    tokenizer.add_special_tokens(&special_tokens);
+    tokenizer
+        .add_special_tokens(special_tokens)
+        .map_err(|e| anyhow::anyhow!("adding special tokens failed: {e}"))?;
 
     // Add post-processing (optional: CLS/SEP not needed for embeddings)
     tokenizer
