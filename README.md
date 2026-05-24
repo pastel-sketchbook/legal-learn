@@ -94,3 +94,8 @@ Tested on Apple M1 Pro (16 GB). Backend: `burn::backend::Wgpu` (Metal 4).
 - Distillation teacher: EmbeddingGemma-300M Q4 via llama-embedding (768→384 truncation)
 - vec0 index: populated during export with raw f32 little-endian bytes
 - Treat `../legal-ko/.qmd/data.db` as an external dependency owned by the sibling repo
+
+### License
+
+MIT — see [LICENSE](LICENSE).
+

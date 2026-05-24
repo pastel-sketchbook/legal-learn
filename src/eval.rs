@@ -136,11 +136,14 @@ pub fn evaluate(db_path: &str, checkpoint_dir: &str, small: bool, n: usize) -> R
     let r5 = recall_at_5 as f64 / eval_n as f64;
     let r10 = recall_at_10 as f64 / eval_n as f64;
 
-    println!("Retrieval Evaluation (n={eval_n})");
-    println!("  MRR:        {mrr:.4}");
-    println!("  Recall@1:   {r1:.4} ({recall_at_1}/{eval_n})");
-    println!("  Recall@5:   {r5:.4} ({recall_at_5}/{eval_n})");
-    println!("  Recall@10:  {r10:.4} ({recall_at_10}/{eval_n})");
+    tracing::info!(
+        n = eval_n,
+        mrr = format!("{mrr:.4}"),
+        recall_at_1 = format!("{r1:.4} ({recall_at_1}/{eval_n})"),
+        recall_at_5 = format!("{r5:.4} ({recall_at_5}/{eval_n})"),
+        recall_at_10 = format!("{r10:.4} ({recall_at_10}/{eval_n})"),
+        "retrieval evaluation complete"
+    );
 
     Ok(())
 }
